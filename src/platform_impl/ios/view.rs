@@ -61,7 +61,7 @@ macro_rules! add_property {
             $decl.add_ivar::<$t>(&CString::new(VAR_NAME).unwrap());
             let setter = if $capability {
                 #[allow(non_snake_case)]
-                extern "C" fn $setter_name($object: &mut Object, _: Sel, value: $t) {
+                extern "C-unwind" fn $setter_name($object: &mut Object, _: Sel, value: $t) {
                     #[allow(deprecated)] // TODO: define_class!
                     unsafe {
                         *$object.get_mut_ivar::<$t>(VAR_NAME) = value;
@@ -71,7 +71,7 @@ macro_rules! add_property {
                 $setter_name
             } else {
                 #[allow(non_snake_case)]
-                extern "C" fn $setter_name($object: &mut Object, _: Sel, value: $t) {
+                extern "C-unwind" fn $setter_name($object: &mut Object, _: Sel, value: $t) {
                     #[allow(deprecated)] // TODO: define_class!
                     unsafe {
                         *$object.get_mut_ivar::<$t>(VAR_NAME) = value;
@@ -81,17 +81,17 @@ macro_rules! add_property {
                 $setter_name
             };
             #[allow(non_snake_case)]
-            extern "C" fn $getter_name($object: &Object, _: Sel) -> $t {
+            extern "C-unwind" fn $getter_name($object: &Object, _: Sel) -> $t {
                 #[allow(deprecated)] // TODO: define_class!
                 unsafe { *$object.get_ivar::<$t>(VAR_NAME) }
             }
             $decl.add_method(
                 sel!($setter_name:),
-                setter as extern "C" fn(_, _, _),
+                setter as extern "C-unwind" fn(_, _, _),
             );
             $decl.add_method(
                 sel!($getter_name),
-                $getter_name as extern "C" fn(_, _) -> _,
+                $getter_name as extern "C-unwind" fn(_, _) -> _,
             );
         }
     };
@@ -113,7 +113,7 @@ unsafe fn get_view_class(root_view_class: &'static Class) -> &'static Class {
     let is_uiview: bool = msg_send![root_view_class, isSubclassOfClass: uiview_class];
     assert!(is_uiview, "`root_view_class` must inherit from `UIView`");
 
-    extern "C" fn draw_rect(object: &Object, _: Sel, rect: CGRect) {
+    extern "C-unwind" fn draw_rect(object: &Object, _: Sel, rect: CGRect) {
       unsafe {
         let window: id = msg_send![object, window];
         assert!(!window.is_null());
@@ -130,7 +130,7 @@ unsafe fn get_view_class(root_view_class: &'static Class) -> &'static Class {
       }
     }
 
-    extern "C" fn layout_subviews(object: &Object, _: Sel) {
+    extern "C-unwind" fn layout_subviews(object: &Object, _: Sel) {
       unsafe {
         let superclass: &'static Class = msg_send![object, superclass];
         let () = msg_send![super(object, superclass), layoutSubviews];
@@ -164,7 +164,7 @@ unsafe fn get_view_class(root_view_class: &'static Class) -> &'static Class {
       }
     }
 
-    extern "C" fn set_content_scale_factor(
+    extern "C-unwind" fn set_content_scale_factor(
       object: &Object,
       _: Sel,
       untrusted_scale_factor: CGFloat,
@@ -220,7 +220,7 @@ unsafe fn get_view_class(root_view_class: &'static Class) -> &'static Class {
       }
     }
 
-    extern "C" fn handle_touches(object: &Object, _: Sel, touches: id, _: id) {
+    extern "C-unwind" fn handle_touches(object: &Object, _: Sel, touches: id, _: id) {
       unsafe {
         let window: id = msg_send![object, window];
         assert!(!window.is_null());
@@ -299,28 +299,28 @@ unsafe fn get_view_class(root_view_class: &'static Class) -> &'static Class {
     )
     .expect("Failed to declare class `TaoUIView`");
     ID += 1;
-    decl.add_method(sel!(drawRect:), draw_rect as extern "C" fn(_, _, _));
-    decl.add_method(sel!(layoutSubviews), layout_subviews as extern "C" fn(_, _));
+    decl.add_method(sel!(drawRect:), draw_rect as extern "C-unwind" fn(_, _, _));
+    decl.add_method(sel!(layoutSubviews), layout_subviews as extern "C-unwind" fn(_, _));
     decl.add_method(
       sel!(setContentScaleFactor:),
-      set_content_scale_factor as extern "C" fn(_, _, _),
+      set_content_scale_factor as extern "C-unwind" fn(_, _, _),
     );
 
     decl.add_method(
       sel!(touchesBegan:withEvent:),
-      handle_touches as extern "C" fn(_, _, _, _),
+      handle_touches as extern "C-unwind" fn(_, _, _, _),
     );
     decl.add_method(
       sel!(touchesMoved:withEvent:),
-      handle_touches as extern "C" fn(_, _, _, _),
+      handle_touches as extern "C-unwind" fn(_, _, _, _),
     );
     decl.add_method(
       sel!(touchesEnded:withEvent:),
-      handle_touches as extern "C" fn(_, _, _, _),
+      handle_touches as extern "C-unwind" fn(_, _, _, _),
     );
     decl.add_method(
       sel!(touchesCancelled:withEvent:),
-      handle_touches as extern "C" fn(_, _, _, _),
+      handle_touches as extern "C-unwind" fn(_, _, _, _),
     );
 
     decl.register()
@@ -335,7 +335,7 @@ unsafe fn get_view_controller_class() -> &'static Class {
 
     let uiviewcontroller_class = class!(UIViewController);
 
-    extern "C" fn should_autorotate(_: &Object, _: Sel) -> BOOL {
+    extern "C-unwind" fn should_autorotate(_: &Object, _: Sel) -> BOOL {
       YES
     }
 
@@ -346,7 +346,7 @@ unsafe fn get_view_controller_class() -> &'static Class {
     .expect("Failed to declare class `TaoUIViewController`");
     decl.add_method(
       sel!(shouldAutorotate),
-      should_autorotate as extern "C" fn(_, _) -> _,
+      should_autorotate as extern "C-unwind" fn(_, _) -> _,
     );
     add_property! {
         decl,
@@ -405,7 +405,7 @@ unsafe fn get_window_class() -> &'static Class {
   if CLASS.is_none() {
     let uiwindow_class = class!(UIWindow);
 
-    extern "C" fn become_key_window(object: &Object, _: Sel) {
+    extern "C-unwind" fn become_key_window(object: &Object, _: Sel) {
       unsafe {
         app_state::handle_nonuser_event(EventWrapper::StaticEvent(Event::WindowEvent {
           window_id: RootWindowId(object.into()),
@@ -415,7 +415,7 @@ unsafe fn get_window_class() -> &'static Class {
       }
     }
 
-    extern "C" fn resign_key_window(object: &Object, _: Sel) {
+    extern "C-unwind" fn resign_key_window(object: &Object, _: Sel) {
       unsafe {
         app_state::handle_nonuser_event(EventWrapper::StaticEvent(Event::WindowEvent {
           window_id: RootWindowId(object.into()),
@@ -432,11 +432,11 @@ unsafe fn get_window_class() -> &'static Class {
     .expect("Failed to declare class `TaoUIWindow`");
     decl.add_method(
       sel!(becomeKeyWindow),
-      become_key_window as extern "C" fn(_, _),
+      become_key_window as extern "C-unwind" fn(_, _),
     );
     decl.add_method(
       sel!(resignKeyWindow),
-      resign_key_window as extern "C" fn(_, _),
+      resign_key_window as extern "C-unwind" fn(_, _),
     );
 
     CLASS = Some(decl.register());
@@ -619,14 +619,14 @@ pub unsafe fn create_window(
 }
 
 pub fn create_delegate_class() {
-  extern "C" fn did_finish_launching(_: &Object, _: Sel, _: id, _: id) -> BOOL {
+  extern "C-unwind" fn did_finish_launching(_: &Object, _: Sel, _: id, _: id) -> BOOL {
     unsafe {
       app_state::did_finish_launching();
     }
     YES
   }
 
-  extern "C" fn configuration_for_connecting_scene_session(
+  extern "C-unwind" fn configuration_for_connecting_scene_session(
     _: &Object,
     _: Sel,
     _application: id,
@@ -667,7 +667,7 @@ pub fn create_delegate_class() {
 
   // custom URL schemes
   // https://developer.apple.com/documentation/xcode/defining-a-custom-url-scheme-for-your-app
-  extern "C" fn application_open_url(
+  extern "C-unwind" fn application_open_url(
     _self: &Object,
     _cmd: Sel,
     _app: id,
@@ -681,7 +681,7 @@ pub fn create_delegate_class() {
 
   // universal links
   // https://developer.apple.com/documentation/xcode/supporting-universal-links-in-your-app
-  extern "C" fn application_continue(
+  extern "C-unwind" fn application_continue(
     _: &Object,
     _: Sel,
     _application: id,
@@ -700,17 +700,17 @@ pub fn create_delegate_class() {
     }
   }
 
-  extern "C" fn will_resign_active(_: &Object, _: Sel, _: id) {
+  extern "C-unwind" fn will_resign_active(_: &Object, _: Sel, _: id) {
     unsafe { app_state::handle_nonuser_event(EventWrapper::StaticEvent(Event::Suspended)) }
   }
 
-  extern "C" fn will_enter_foreground(_: &Object, _: Sel, _: id) {
+  extern "C-unwind" fn will_enter_foreground(_: &Object, _: Sel, _: id) {
     unsafe { app_state::handle_nonuser_event(EventWrapper::StaticEvent(Event::Resumed)) }
   }
 
-  extern "C" fn did_enter_background(_: &Object, _: Sel, _: id) {}
+  extern "C-unwind" fn did_enter_background(_: &Object, _: Sel, _: id) {}
 
-  extern "C" fn will_terminate(_: &Object, _: Sel, _: id) {
+  extern "C-unwind" fn will_terminate(_: &Object, _: Sel, _: id) {
     unsafe {
       let app: id = msg_send![class!(UIApplication), sharedApplication];
       let windows: id = msg_send![app, windows];
@@ -744,42 +744,42 @@ pub fn create_delegate_class() {
   unsafe {
     decl.add_method(
       sel!(application:didFinishLaunchingWithOptions:),
-      did_finish_launching as extern "C" fn(_, _, _, _) -> _,
+      did_finish_launching as extern "C-unwind" fn(_, _, _, _) -> _,
     );
 
     if multiple_scenes_enabled() {
       decl.add_method(
         sel!(application:configurationForConnectingSceneSession:options:),
-        configuration_for_connecting_scene_session as extern "C" fn(_, _, _, _, _) -> _,
+        configuration_for_connecting_scene_session as extern "C-unwind" fn(_, _, _, _, _) -> _,
       );
     }
 
     decl.add_method(
       sel!(application:openURL:options:),
-      application_open_url as extern "C" fn(_, _, _, _, _) -> _,
+      application_open_url as extern "C-unwind" fn(_, _, _, _, _) -> _,
     );
 
     decl.add_method(
       sel!(application:continueUserActivity:restorationHandler:),
-      application_continue as extern "C" fn(_, _, _, _, _) -> _,
+      application_continue as extern "C-unwind" fn(_, _, _, _, _) -> _,
     );
 
     decl.add_method(
       sel!(applicationWillResignActive:),
-      will_resign_active as extern "C" fn(_, _, _),
+      will_resign_active as extern "C-unwind" fn(_, _, _),
     );
     decl.add_method(
       sel!(applicationWillEnterForeground:),
-      will_enter_foreground as extern "C" fn(_, _, _),
+      will_enter_foreground as extern "C-unwind" fn(_, _, _),
     );
     decl.add_method(
       sel!(applicationDidEnterBackground:),
-      did_enter_background as extern "C" fn(_, _, _),
+      did_enter_background as extern "C-unwind" fn(_, _, _),
     );
 
     decl.add_method(
       sel!(applicationWillTerminate:),
-      will_terminate as extern "C" fn(_, _, _),
+      will_terminate as extern "C-unwind" fn(_, _, _),
     );
 
     decl.register();
